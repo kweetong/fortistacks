@@ -9,7 +9,7 @@ config system interface
 edit "port1"
 set mode dhcp
 set allowaccess ping https ssh http snmp fgfm
-set mtu 1456
+set mtu 8956
 next
     edit "port2"
 	set mode dhcp

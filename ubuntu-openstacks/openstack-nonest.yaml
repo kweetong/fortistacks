@@ -99,7 +99,7 @@ applications:
       "bridge-mappings": "physnet1:br-ex"
       "data-port": "br-ex:eth1"
       "ext-port": eth1
-      "instance-mtu": 1456
+      "instance-mtu": 8956
     annotations: 
       "gui-x": "0"
       "gui-y": "0"

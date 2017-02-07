@@ -1,4 +1,8 @@
-
+### from https://osm.etsi.org/wikipub/index.php/OSM_Release_ONE#Install_OSM
+    
+wget https://osm-download.etsi.org/ftp/osm-1.0-one/install_from_source.sh
+chmod +x install_from_source.sh
+./install_from_source.sh
 
 ##get the default descriptor packages
 git clone https://osm.etsi.org/gerrit/osm/descriptor-packages.git

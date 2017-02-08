@@ -48,7 +48,7 @@ else
     if [ -n "$keystone_PUBENDPOINT" ]
     then
 	## will need to add the PUBENPOINT to the different services interfaces to enable access on ob-num+2 network.
-	## Assume a fresh install where the unit ID is 0 keystone/0 for example (TO BE FIXED)
+	##Assume a fresh install where the unit ID is 0 keystone/0 for example (TO BE FIXED)
 	unset DEVICE
 	for service in keystone cinder glance neutron-api nova-cloud-controller ceph-radosgw
 	do
@@ -63,43 +63,83 @@ else
     fi
 fi
 
+APIversion=`juju config  keystone| python -c "import yaml; import sys; print yaml.load(sys.stdin)[\"settings\"][\"preferred-api-version\"][\"value\"]"`
 
-echo "export SERVICE_ENDPOINT=http://$keystone:5000/v2.0/
-unset SERVICE_TOKEN
+if [ $APIversion -eq 3 ]
+then
+    ## Ref to https://wiki.ubuntu.com/OpenStack/OpenStackCharms/ReleaseNotes1604#Keystone_v3_API_support
+    echo "unset SERVICE_TOKEN
 unset SERVICE_ENDPOINT 
+# unset v2.0 items in case set
+unset OS_TENANT_ID
+unset OS_TENANT_NAME
+export OS_AUTH_URL=http://$keystone:5000/v3
+export OS_USERNAME=$(juju config keystone | python -c "import yaml; import sys; print yaml.load(sys.stdin)[\"settings\"][\"admin-user\"][\"value\"]")
+export OS_PASSWORD=$(juju config keystone | python -c "import yaml; import sys; print yaml.load(sys.stdin)[\"settings\"][\"admin-password\"][\"value\"]")
+export OS_USERNAME=admin
+export OS_REGION_NAME=$(juju config keystone | python -c "import yaml; import sys; print yaml.load(sys.stdin)[\"settings\"][\"region\"][\"value\"]")
+export OS_USER_DOMAIN_NAME=admin_domain
+export OS_PROJECT_DOMAIN_NAME=admin_admin
+export OS_PROJECT_NAME=admin
+export OS_IDENTITY_API_VERSION=3
+# Swift needs this:
+export OS_AUTH_VERSION=3" > ~/nova.rc
+else    
+    echo "unset SERVICE_TOKEN
+unset SERVICE_ENDPOINT 
+
+# unsetting v3 items in case set
+unset OS_PROJECT_ID
+unset OS_PROJECT_NAME
+unset OS_USER_DOMAIN_NAME
 export OS_AUTH_URL=http://$keystone:5000/v2.0/
 export OS_USERNAME=$(juju config keystone | python -c "import yaml; import sys; print yaml.load(sys.stdin)[\"settings\"][\"admin-user\"][\"value\"]")
 export OS_PASSWORD=$(juju config keystone | python -c "import yaml; import sys; print yaml.load(sys.stdin)[\"settings\"][\"admin-password\"][\"value\"]")
 export OS_TENANT_NAME=admin
 export OS_REGION_NAME=$(juju config keystone | python -c "import yaml; import sys; print yaml.load(sys.stdin)[\"settings\"][\"region\"][\"value\"]")
 " > ~/nova.rc
-
+fi
 source ~/nova.rc
 
-# Determine the tenant id for the configured tenant name.
-export TENANT_ID="$(openstack project list | grep $OS_TENANT_NAME | awk '{ print $2 }')"
 
-if [ "$TENANT_ID" = "" ]; then
-	echo "Unable to find tenant ID, keystone auth problem"
-	exit 2
+if [ $APIversion -eq 2 ]
+   then
+       # Determine the tenant id for the configured tenant name.
+       export TENANT_ID="$(openstack project list | grep $OS_TENANT_NAME | awk '{ print $2 }')"
+       
+       if [ "$TENANT_ID" = "" ]; then
+	   echo "Unable to find tenant ID, keystone auth problem"
+	   exit 2
+       fi
+       echo "Configuring Openstack Neutron Networking"
+
+       #create ext network with neutron for floating IPs
+       neutron net-show ext_net > /dev/null 2>&1 || neutron net-create ext_net  --tenant-id $TENANT_ID -- --router:external=True
+       EXTERNAL_NETWORK_ID=$(neutron net-show ext_net | grep " id" | awk '{print $4}')
+       neutron subnet-show ext_net_subnet > /dev/null 2>&1 || neutron subnet-create ext_net $NEUTRON_EXT_NET_CIDR --name ext_net_subnet --tenant-id $TENANT_ID \
+								      --allocation-pool start=$NEUTRON_FLOAT_RANGE_START,end=$NEUTRON_FLOAT_RANGE_END \
+								      --gateway $NEUTRON_EXT_NET_GW --disable-dhcp --dns_nameservers $NEUTRON_DNS list=true
+       #Create router for external network and private network
+       neutron router-show provider-router > /dev/null 2>&1 || neutron router-create --tenant-id $TENANT_ID provider-router
+else
+    # API v3 does not require the tenant id anymore and this method result in http 403 perm denied ..
+    echo "Configuring Openstack Neutron Networking v3"
+    
+    #create ext network with neutron for floating IPs
+    neutron net-show ext_net > /dev/null 2>&1 || neutron net-create ext_net  -- --router:external=True
+    EXTERNAL_NETWORK_ID=$(neutron net-show ext_net | grep " id" | awk '{print $4}')
+    neutron subnet-show ext_net_subnet > /dev/null 2>&1 || neutron subnet-create ext_net $NEUTRON_EXT_NET_CIDR --name ext_net_subnet \
+								      --allocation-pool start=$NEUTRON_FLOAT_RANGE_START,end=$NEUTRON_FLOAT_RANGE_END \
+								      --gateway $NEUTRON_EXT_NET_GW --disable-dhcp --dns_nameservers $NEUTRON_DNS list=true
+    #Create router for external network and private network
+    neutron router-show provider-router > /dev/null 2>&1 || neutron router-create  provider-router
 fi
-
-echo "Configuring Openstack Neutron Networking"
-
-#create ext network with neutron for floating IPs
-neutron net-show ext_net > /dev/null 2>&1 || neutron net-create ext_net --tenant-id $TENANT_ID -- --router:external=True
-EXTERNAL_NETWORK_ID=$(neutron net-show ext_net | grep " id" | awk '{print $4}')
-neutron subnet-show ext_net_subnet > /dev/null 2>&1 || neutron subnet-create ext_net $NEUTRON_EXT_NET_CIDR --name ext_net_subnet --tenant-id $TENANT_ID \
---allocation-pool start=$NEUTRON_FLOAT_RANGE_START,end=$NEUTRON_FLOAT_RANGE_END \
---gateway $NEUTRON_EXT_NET_GW --disable-dhcp --dns_nameservers $NEUTRON_DNS list=true
 
 #Create private network for neutron for tenant VMs
 neutron net-show private > /dev/null 2>&1 || neutron net-create private
 neutron subnet-show private_subnet > /dev/null 2>&1 || neutron subnet-create private $NEUTRON_FIXED_NET_CIDR -- --name private_subnet --dns_nameservers list=true $NEUTRON_DNS
 SUBNET_ID=$(neutron subnet-show private_subnet | grep " id" | awk '{print $4}')
 
-#Create router for external network and private network
-neutron router-show provider-router > /dev/null 2>&1 || neutron router-create --tenant-id $TENANT_ID provider-router
 ROUTER_ID=$(neutron router-show provider-router | grep " id" | awk '{print $4}')
 
 neutron router-gateway-clear provider-router || true
@@ -111,11 +151,11 @@ neutron router-interface-add $ROUTER_ID $SUBNET_ID || true
 
 #Configure the default security group to allow ICMP and SSH
 openstack security group rule create --proto icmp default || echo "should have been created already"
-#openstack security group rule create --proto tcp --dst-port 22 default || echo "should have been created already"
-#openstack security group rule create --proto tcp --dst-port 80 default || echo "should have been created already"
-#openstack security group rule create --proto tcp --dst-port 443 default || echo "should have been created already"
+openstack security group rule create --proto tcp --dst-port 22 default || echo "should have been created already"
+openstack security group rule create --proto tcp --dst-port 80 default || echo "should have been created already"
+openstack security group rule create --proto tcp --dst-port 443 default || echo "should have been created already"
 #port for RDP
-#openstack security group rule create --proto tcp --dst-port 3389 default || echo "should have been created already"
+openstack security group rule create --proto tcp --dst-port 3389 default || echo "should have been created already"
 
 
 ##make wide open
@@ -134,11 +174,12 @@ done
 openstack flavor create m1.small --id auto --ram 1024 --disk 20 --vcpus 2
 openstack flavor create m1.medium --id auto --ram 2048 --disk 20 --vcpus 2
 openstack flavor create m1.large --id auto --ram 4096 --disk 20 --vcpus 4
-
-#Modify quotas for the tenant to allow large deployments
-openstack quota  set --ram 204800 --cores 200 --instances 100 admin
-neutron quota-update --security-group 100 --security-group-rule 500 
-
+if [ $APIversion -eq 2 ]
+   then
+       #Modify quotas for the tenant to allow large deployments
+       openstack quota  set --ram 204800 --cores 200 --instances 100 admin
+       neutron quota-update --security-group 100 --security-group-rule 500 
+fi
 #setup heat
 juju run-action heat/0 domain-setup || echo "heat not installed"
 

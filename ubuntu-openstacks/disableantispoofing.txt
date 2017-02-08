@@ -1,0 +1,30 @@
+https://gist.github.com/djoreilly/db9c2d32a473c6643551
+
+Mitaka + :
+I was able to setup mikata where it does not create linux bridges. the config is a bit different.
+On each controller and compute node
+
+# /etc/neutron/plugins/ml2/ml2_conf.ini
+[securitygroup]
+firewall_driver = neutron.agent.firewall.NoopFirewallDriver
+On the controller node
+
+# /etc/nova/nova.conf
+[DEFAULT]
+security_group_api = neutron
+firewall_driver = nova.virt.firewall.NoopFirewallDriver
+Note that you need to make sure
+enable_security_group = True
+otherwise an instance cannot be launched and an error will be reported.
+A firewall rule is still present, but it is in the flow table of br-int.
+@schmilmo
+schmilmo commented on 20 Jul 2016
+In Mitaka the anti-spoofing aren't anymore set in the IPtables instead they are implemented to in ovs flows.
+if you want to disable the anti spoofing rules you should set prevent_arp_spoofing = false in the neutron ml2 configuration
+@alogracia
+alogracia commented on 26 Aug 2016
+Does it mean that Linux bridges do not work in Mitaka with security groups?
+@tmartinx
+tmartinx commented on 28 Nov 2016
+On Mitaka, "firewall_driver=openvswitch" on ml2 re-activate the Security Groups via new "ovs-firewall-driver", no more Linux Bridges in the middle, open-flow-based firewall. Pretty cool!
+

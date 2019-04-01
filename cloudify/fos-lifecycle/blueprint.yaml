@@ -6,11 +6,10 @@ description: >
   $ cfy secret create fmg_password -s XXXX
 imports:
   - http://www.getcloudify.org/spec/cloudify/4.5.5/types.yaml
-  - http://www.getcloudify.org/spec/openstack-plugin/2.14.7/plugin.yaml
   - plugin:cloudify-openstack-plugin
   - plugin:cloudify-utilities-plugin
   - plugins/cloudify-fortimanager-plugin/plugin.yaml
-  - plugin:cloudify-diamond-plugin
+#  - plugin:cloudify-diamond-plugin
 
 
 
@@ -40,28 +39,44 @@ dsl_definitions:
 # The configuration of openstack access is in the file /etc/cloudify/openstack_config.json
 # For simplicity of blueprint reading.
 
-#  ##openstack_config: &openstack_config
-#    username: { get_secret: keystone_username }
-#    password: { get_secret: keystone_password }
-#    tenant_name: { get_secret: keystone_tenant_name }
-#    auth_url: { get_secret: keystone_url }
-#    region: { get_secret: region }
+  client_config: &client_config
+    auth_url: { get_secret: keystone_url }
+    username: { get_secret: keystone_username }
+    password: { get_secret: keystone_password }
+    project_name: { get_secret: keystone_project_name }
+    region_name: { get_secret: region }
+    user_domain_id: { get_secret: keystone_domain }
 
 node_templates:
 
-# networks
+# networks managemnt naetwork is now explicit
+# deprecate:     management_network_name: { get_input: mgmt_network_name }
+# so create a
+
+  management_network:
+    type: cloudify.nodes.openstack.Network
+    properties:
+      client_config: *client_config
+      use_external_resource: true
+      resource_config:
+        name: { get_input: mgmt_network_name  }
+        kwargs:
+          routing:
+            external: true
 
   wan_network:
-    type: cloudify.openstack.nodes.Network
+    type: cloudify.nodes.openstack.Network
     properties:
-      resource_id: wan_network
+      client_config: *client_config
+      resource_config:
+        name: wan_network
 
   wan_subnet:
-    type: cloudify.openstack.nodes.Subnet
+    type: cloudify.nodes.openstack.Subnet
     properties:
-      ##openstack_config: *openstack_config
-      resource_id: wan_subnet
-      subnet:
+      client_config: *client_config
+      resource_config:
+        name: wan_subnet
         host_routes: [ {"nexthop": "10.30.30.1", "destination": "172.27.40.0/24"} ]
         cidr: 10.30.30.0/24
         allocation_pools:
@@ -75,16 +90,18 @@ node_templates:
 
 #
   branche_lan:
-    type: cloudify.openstack.nodes.Network
+    type: cloudify.nodes.openstack.Network
     properties:
-      resource_id: branche_lan
+      client_config: *client_config
+      resource_config:
+        name: branche_lan
 
   branche_subnet:
-    type: cloudify.openstack.nodes.Subnet
+    type: cloudify.nodes.openstack.Subnet
     properties:
-      ##openstack_config: *openstack_config
-      resource_id: branche_subnet
-      subnet:
+      client_config: *client_config
+      resource_config:
+        name: branche_subnet
         host_routes: [ {"nexthop": "192.168.12.254", "destination": "10.0.0.0/8"}, {"nexthop": "192.168.12.254", "destination": "172.27.40.0/24"} ]
         cidr: 192.168.12.0/24
         allocation_pools:
@@ -100,7 +117,9 @@ node_templates:
 
 
   fos_floating_ip:
-    type: cloudify.openstack.nodes.FloatingIP
+    type: cloudify.nodes.openstack.FloatingIP
+    properties:
+      client_config: *client_config
     capabilities:
       scalable:
         properties:
@@ -113,7 +132,9 @@ node_templates:
               floating_network_name: { get_input: external_network_name }
 
   fos_nat_port:
-    type: cloudify.openstack.nodes.Port
+    type: cloudify.nodes.openstack.Port
+    properties:
+      client_config: *client_config
     capabilities:
       scalable:
         properties:
@@ -135,20 +156,19 @@ node_templates:
 ## scalable
 
   fortios:
-    type: cloudify.openstack.nodes.Server
+    type: cloudify.nodes.openstack.Server
     capabilities:
       scalable:
         properties:
           default_instances: 1
     properties:
-      server:
-        image_name: { get_input: fos_image }
-        flavor_name: { get_input: fos_flavor }
-        key_name: { get_input: key_name }
+      client_config: *client_config
       agent_config:
-        install_method: none # do not install agent
-      ##openstack_config: *openstack_config
-      management_network_name: { get_input: mgmt_network_name }
+        install_method: none
+      resource_config:
+        image_id: { get_input: fos_image }
+        flavor_id: { get_input: fos_flavor }
+        key_name: { get_input: key_name }
     interfaces:
       cloudify.interfaces.lifecycle:
         create:
@@ -207,6 +227,8 @@ node_templates:
                   end
                 end
     relationships:
+      - target: management_network
+        type: cloudify.relationships.connected_to
       - target: fos_nat_port
         type: cloudify.relationships.connected_to
       - target: fos_nat_port
@@ -215,8 +237,9 @@ node_templates:
         type: cloudify.relationships.connected_to
       - target: wan_subnet
         type: cloudify.relationships.depends_on
-      - target: fos_floating_ip
-        type: cloudify.openstack.server_connected_to_floating_ip
+#      - target: fos_floating_ip
+#        type: cloudify.openstack.server_connected_to_floating_ip
+
 
 ## fortimanager plugin can associate ANY fmg api calls. Here default add device,
 ##  set license metering and install package

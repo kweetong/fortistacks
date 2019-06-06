@@ -4,3 +4,6 @@
 [submodule "cloudify/fos-lifecycle/plugins/cloudify-fortimanager-plugin"]
 	path = cloudify/fos-lifecycle/plugins/cloudify-fortimanager-plugin
 	url = https://github.com/fortinet-solutions-cse/cloudify-fortimanager-plugin.git
+[submodule "cloudify/fortigate-withplugin/plugins/cloudify-fortigate-plugin"]
+	path = cloudify/fortigate-withplugin/plugins/cloudify-fortigate-plugin
+	url = https://github.com/fortinet-solutions-cse/cloudify-fortigate-plugin.git

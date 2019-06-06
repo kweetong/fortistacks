@@ -11,7 +11,7 @@ git clone https://github.com/fortinet-solutions-cse/fortistacks.git --recursive
 ```
 When updating to last version use:
 ```bash
-git pull --recurse-submodule
+git submodule update --recursive --remote
 ```
 
 The scripts are made to run on an Ubuntu with sudo access. 

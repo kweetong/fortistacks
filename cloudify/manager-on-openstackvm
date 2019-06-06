@@ -93,7 +93,7 @@ done
 
 
 ### Install from rpm
-$SSH sudo yum install -y openssl-1.0.2k wget
+$SSH sudo yum install -y openssl-1.0.2k wget gcc python-devel
 $SSH sudo yum upgrade -y
 $SSH "(rpm -q cloudify-manager-install)|| sudo yum install -y http://repository.cloudifysource.org/cloudify/$CFY_VERSION/community-release/cloudify-manager-install-community-$CFY_VERSION.rpm"
 

@@ -1,7 +1,7 @@
 api_calls:
   # first call
   - path: /system/license
-    method: GET
+    method: LICENSE
     data:
       vdom: root
     recoverable_code:

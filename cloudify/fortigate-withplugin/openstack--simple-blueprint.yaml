@@ -78,17 +78,13 @@ node_templates:
 
 
   fortigate:
-    type: cloudify.openstack.nodes.Fortigate
+    type: cloudify.openstack.nodes.Server
     properties:
-      user: "admin"
-      password: "fortinet"
-      vdom: "root"
       server:
         image_name: { get_input: fos_image }
         flavor_name: { get_input: fos_flavor }
         #useless key_name for fortinet but mandatory for openstack
         key_name: { get_input: key_name }
-        verify_ssl: False
       agent_config:
         install_method: none # do not install agent
       ##openstack_config: *openstack_config
@@ -99,6 +95,11 @@ node_templates:
           inputs:
             args:
               userdata: |
+                config system admin
+                    edit "admin"
+                        set password fortinet
+                    next
+                end
                 #FOS VM Config File
                 config system interface
                 edit port1
@@ -139,3 +140,15 @@ node_templates:
 #      - target: my_security_group
 #        type: cloudify.openstack.server_connected_to_security_group
 #not compatible with portsecurity disabled
+
+  fortigate-api:
+    type: fortinet.nodes.Fortigate
+    properties:
+      username: "admin"
+      password: "fortinet"
+      vdom: "root"
+      use_ssl: False
+      verify_ssl: False
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: fortigate
